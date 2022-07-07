@@ -27,4 +27,8 @@ public class FileInfoRepository {
         fileInfos.remove(fileInfo.getFileId());
     }
 
+    public Map<String, FileInfo> findAll() {
+        return fileInfos;
+    }
+
 }

@@ -7,6 +7,7 @@ import java.net.URISyntaxException;
 import java.security.InvalidKeyException;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.annotation.PostConstruct;
@@ -75,7 +76,7 @@ public class FileController {
 		fileInfo.setPath(filePath);
 		fileInfo.setStorage("blob");
 		try (InputStream fis = file.getInputStream()) {
-			CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+			CloudBlockBlob blob = container.getBlockBlobReference(filePath);
 			HashMap<String, String> metadata = new HashMap<String, String>();
 			metadata.put("name", file.getOriginalFilename());
 			metadata.put("category", category);
@@ -202,5 +203,10 @@ public class FileController {
 	public String clearCache() {
 		fileInfoRepository.clearCache();
 		return "cache cleared";
+	}
+
+	@GetMapping("/listCache")
+	public Map<String, FileInfo> listCache() {
+		return fileInfoRepository.findAll();
 	}
 }

@@ -13,6 +13,7 @@ import javax.annotation.PostConstruct;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,6 +48,9 @@ public class FileController {
 	CloudStorageAccount storageAccount;
 	CloudBlobClient blobClient = null;
 	CloudBlobContainer container = null;
+
+	@Autowired
+	FileInfoRepository fileInfoRepository;
 
 	@PostConstruct
 	public void init() throws InvalidKeyException, URISyntaxException, StorageException {
@@ -83,7 +87,7 @@ public class FileController {
 		} catch (IOException | StorageException | URISyntaxException e) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToSaveFile", e);
 		}
-		// fileInfoRepository.saveAndFlush(fileInfo);
+		fileInfoRepository.saveAndFlush(fileInfo);
 		return fileInfo;
 	}
 
@@ -112,17 +116,16 @@ public class FileController {
 		} catch (IOException | StorageException | URISyntaxException e) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToSaveFile", e);
 		}
-		// fileInfoRepository.saveAndFlush(fileInfo);
+		fileInfoRepository.saveAndFlush(fileInfo);
 		return fileInfo;
 	}
 
 	@GetMapping("/stream/{fileId}")
 	public void streamFile(@PathVariable String fileId,  @RequestParam(value = "view", required = false) Boolean isView, HttpServletResponse response) {
-		// FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
-		// if(fileInfo == null) {
-		// 	throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
-		// }
-		FileInfo fileInfo = getFileInfo(fileId); // to be removed
+		FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
+		if(fileInfo == null) {
+			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
+		}
 
 		response.setHeader("Content-Type", fileInfo.getType());
 		if(fileInfo.getLength() != 0)
@@ -149,8 +152,7 @@ public class FileController {
 
 	@DeleteMapping("/delete/{fileId}")
 	public void deleteFile(@PathVariable String fileId) {
-		// FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
-		FileInfo fileInfo = getFileInfo(fileId);
+		FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
 		if(fileInfo == null) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
 		}
@@ -160,14 +162,12 @@ public class FileController {
 		} catch (StorageException | URISyntaxException e) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.unableToDelete" + e + fileId);
 		}
-		// fileInfoRepository.delete(fileInfo);
+		fileInfoRepository.delete(fileInfo);
 	}
 
 	@GetMapping("/read/{fileId}")
 	public byte[] readExistingFile(@PathVariable String fileId) {
-		// FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
-		FileInfo fileInfo = getFileInfo(fileId);
-
+		FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
 		if(fileInfo == null) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
 		}
@@ -196,5 +196,11 @@ public class FileController {
 			@RequestParam(value = "name", required = true) String fileName,
 			@RequestParam(value = "contentType", required = true) String contentType) {
 		return storeFile(Base64.getMimeDecoder().decode(fileStream), fileName, contentType, null, category, subCategory);
+	}
+
+	@GetMapping("/clearCache")
+	public String clearCache() {
+		fileInfoRepository.clearCache();
+		return "cache cleared";
 	}
 }

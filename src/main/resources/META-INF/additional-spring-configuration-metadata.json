@@ -1,0 +1,9 @@
+{
+    "properties": [
+        {
+            "name": "azure.connection-string",
+            "type": "java.lang.String",
+            "description": "Azure Blob Connection String'"
+        }
+    ]
+}

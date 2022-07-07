@@ -1,5 +1,6 @@
 package com.stalingino.azureblob;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -9,7 +10,13 @@ import java.util.HashMap;
 import java.util.UUID;
 
 import javax.annotation.PostConstruct;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -32,9 +39,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class FileController {
 
-	public static final String CONNECTION_STRING = "";
+	@Value("${azure.connectionString}")
+	private String connectionString;
 
-	private static final String bucketName = "bucket";
+	private static final String BUCKET_NAME = "bucket";
 
 	CloudStorageAccount storageAccount;
 	CloudBlobClient blobClient = null;
@@ -42,9 +50,9 @@ public class FileController {
 
 	@PostConstruct
 	public void init() throws InvalidKeyException, URISyntaxException, StorageException {
-		storageAccount = CloudStorageAccount.parse(CONNECTION_STRING);
+		storageAccount = CloudStorageAccount.parse(connectionString);
 		blobClient = storageAccount.createCloudBlobClient();
-		container = blobClient.getContainerReference(bucketName);
+		container = blobClient.getContainerReference(BUCKET_NAME);
 		log.info("Creating container: " + container.getName());
 		container.createIfNotExists(BlobContainerPublicAccessType.CONTAINER, new BlobRequestOptions(),
 				new OperationContext());
@@ -91,7 +99,7 @@ public class FileController {
 		fileInfo.setSubCategory(subCategory);
 
 		try {
-			CloudBlockBlob blob = container.getBlockBlobReference(fileName);
+			CloudBlockBlob blob = container.getBlockBlobReference(filePath);
 			HashMap<String, String> metadata = new HashMap<String, String>();
 			metadata.put("name", fileName);
 			metadata.put("category", category);
@@ -106,6 +114,72 @@ public class FileController {
 		}
 		// fileInfoRepository.saveAndFlush(fileInfo);
 		return fileInfo;
+	}
+
+	@GetMapping("/stream/{fileId}")
+	public void streamFile(@PathVariable String fileId,  @RequestParam(value = "view", required = false) Boolean isView, HttpServletResponse response) {
+		// FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
+		// if(fileInfo == null) {
+		// 	throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
+		// }
+		FileInfo fileInfo = getFileInfo(fileId); // to be removed
+
+		response.setHeader("Content-Type", fileInfo.getType());
+		if(fileInfo.getLength() != 0)
+			response.setHeader("Content-Length", "" + fileInfo.getLength());
+		if (isView != null && isView)
+			response.setHeader("Content-Disposition", "filename=" + fileInfo.getName());
+		else
+			response.setHeader("Content-Disposition", "attachment; filename=" + fileInfo.getName());
+
+		try {
+			CloudBlockBlob blob = container.getBlockBlobReference(fileId);
+			blob.download(response.getOutputStream());
+		} catch (IOException | StorageException | URISyntaxException e) {
+			log.warn("Unable to stream file with id:" + fileId + " message: "+ e.getMessage());
+			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToStreamFile" + e + fileId);
+		}
+	}
+
+	private FileInfo getFileInfo(String fileId) {
+		FileInfo fileInfo = new FileInfo();
+		fileInfo.setFileId(fileId);
+		return fileInfo;
+	}
+
+	@DeleteMapping("/delete/{fileId}")
+	public void deleteFile(@PathVariable String fileId) {
+		// FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
+		FileInfo fileInfo = getFileInfo(fileId);
+		if(fileInfo == null) {
+			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
+		}
+		try {
+			CloudBlockBlob blob = container.getBlockBlobReference(fileId);
+			blob.deleteIfExists();
+		} catch (StorageException | URISyntaxException e) {
+			throw new RuntimeException("com.sensei.app.filemanagerservice.unableToDelete" + e + fileId);
+		}
+		// fileInfoRepository.delete(fileInfo);
+	}
+
+	@GetMapping("/read/{fileId}")
+	public byte[] readExistingFile(@PathVariable String fileId) {
+		// FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
+		FileInfo fileInfo = getFileInfo(fileId);
+
+		if(fileInfo == null) {
+			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
+		}
+		try  {
+			CloudBlockBlob blob = container.getBlockBlobReference(fileId);
+			byte[] buffer = new byte[fileInfo.getLength().intValue()];
+			blob.downloadToByteArray(buffer, 0);
+			return buffer;
+		} catch (Exception e) {
+			log.warn("Unable to read file with id:" + fileId + " message: "+ e);
+			throw new RuntimeException("Unable to read file with id:" + fileId + " message: "+ e.getMessage());
+		}
 	}
 
 	@PostMapping("/upload")

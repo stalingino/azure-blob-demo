@@ -1,6 +1,5 @@
 package com.stalingino.azureblob;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -11,7 +10,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import javax.annotation.PostConstruct;
-import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -102,7 +100,7 @@ public class FileController {
 		fileInfo.setMetadata("");
 		fileInfo.setCategory(category);
 		fileInfo.setSubCategory(subCategory);
-
+		fileInfo.setStorage("blob");
 		try {
 			CloudBlockBlob blob = container.getBlockBlobReference(filePath);
 			HashMap<String, String> metadata = new HashMap<String, String>();
@@ -112,8 +110,7 @@ public class FileController {
 			metadata.put("contentType", contentType);
 			blob.setMetadata(metadata);
 			blob.uploadFromByteArray(fileBytes, 0, fileBytes.length);
-			fileInfo.setPath(filePath);
-			fileInfo.setStorage("s3");
+			fileInfo.setPath(blob.getUri().toString());
 		} catch (IOException | StorageException | URISyntaxException e) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToSaveFile", e);
 		}
@@ -134,7 +131,7 @@ public class FileController {
 		if (isView != null && isView)
 			response.setHeader("Content-Disposition", "filename=" + fileInfo.getName());
 		else
-			response.setHeader("Content-Disposition", "attachment; filename=" + fileInfo.getName());
+			response.setHeader("Content-Disposition", "attachment;filename=" + fileInfo.getName());
 
 		try {
 			CloudBlockBlob blob = container.getBlockBlobReference(fileId);
@@ -167,11 +164,16 @@ public class FileController {
 	}
 
 	@GetMapping("/read/{fileId}")
-	public byte[] readExistingFile(@PathVariable String fileId) {
+	public byte[] readExistingFile(@PathVariable String fileId, HttpServletResponse response) {
 		FileInfo fileInfo = fileInfoRepository.findOneByFileId(fileId);
 		if(fileInfo == null) {
 			throw new RuntimeException("com.sensei.app.filemanagerservice.failedToFindFileWithId" + fileId);
 		}
+		response.setHeader("Content-Type", fileInfo.getType());
+		response.setHeader("Content-Disposition", "attachment;filename=" + fileInfo.getName());
+		if(fileInfo.getLength() != 0)
+			response.setHeader("Content-Length", "" + fileInfo.getLength());
+
 		try  {
 			CloudBlockBlob blob = container.getBlockBlobReference(fileId);
 			byte[] buffer = new byte[fileInfo.getLength().intValue()];
@@ -192,8 +194,8 @@ public class FileController {
 
 	@PostMapping("/upload/base64")
 	public FileInfo storeFile(@RequestParam("file") String fileStream,
-			@RequestParam(value = "type", required = true) String category,
-			@RequestParam(value = "subType", required = true) String subCategory,
+			@RequestParam(value = "category", required = true) String category,
+			@RequestParam(value = "subCategory", required = true) String subCategory,
 			@RequestParam(value = "name", required = true) String fileName,
 			@RequestParam(value = "contentType", required = true) String contentType) {
 		return storeFile(Base64.getMimeDecoder().decode(fileStream), fileName, contentType, null, category, subCategory);
